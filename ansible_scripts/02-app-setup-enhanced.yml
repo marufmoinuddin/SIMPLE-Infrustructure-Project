@@ -1,0 +1,661 @@
+---
+# Ansible Playbook 2: Enhanced Application Server Setup with NGINX
+# Deploy Enhanced SIMPLE Application with Real Infrastructure Integration
+# Target: Application Server VMs (app1, app2)
+# Date: September 1, 2025
+#
+# Enhanced Application Features:
+# - Real-time infrastructure monitoring
+# - Interactive Redis cache operations
+# - PostgreSQL database integration
+# - Cross-tier session management
+# - Load testing capabilities
+# - Live performance metrics
+# - Web-based dashboard with API endpoints
+#
+# Application Configuration:
+# - Enhanced Python Flask application with comprehensive features
+# - NGINX reverse proxy with load balancing support
+# - Docker containerization for consistent deployment
+# - Health checks and monitoring endpoints
+# - Real database and Redis integration
+#
+# Architecture Implementation:
+# - app1 (192.168.122.111:8080) - Enhanced SIMPLE Application
+# - app2 (192.168.122.112:8080) - Enhanced SIMPLE Application  
+# - NGINX on each server for reverse proxy and health checks
+# - Docker containers for application isolation
+# - Integration with Redis (192.168.122.121) and PostgreSQL (192.168.122.131)
+
+- name: Setup Enhanced Application Servers with NGINX
+  hosts: applications
+  become: yes
+  gather_facts: yes
+  vars:
+    # Enhanced Application Configuration
+    app_name: "Enhanced SIMPLE Production"
+    app_port: 8080
+    app_health_port: 8081
+    app_content_dir: "/opt/docker/application/html"
+    app_log_dir: "/var/log/nginx"
+    
+    # Enhanced Application Settings
+    enhanced_app_version: "2.0.0"
+    redis_host: "192.168.122.121"
+    redis_port: 6379
+    database_host: "192.168.122.131"
+    database_port: 5432
+    
+    # NGINX Configuration
+    nginx_worker_processes: auto
+    nginx_worker_connections: 1024
+    
+    # Health Check Configuration
+    health_check_interval: 30
+    health_check_timeout: 10
+    
+    # Server Information
+    app_servers:
+      - { name: "app1", ip: "192.168.122.111" }
+      - { name: "app2", ip: "192.168.122.112" }
+
+  tasks:
+    - name: Display enhanced application setup information
+      debug:
+        msg: |
+          ===== ENHANCED APPLICATION SERVER SETUP =====
+          Host: {{ inventory_hostname }} ({{ ansible_host }})
+          Application: {{ app_name }} v{{ enhanced_app_version }}
+          App Port: {{ app_port }}
+          Health Port: {{ app_health_port }}
+          Redis Integration: {{ redis_host }}:{{ redis_port }}
+          Database Integration: {{ database_host }}:{{ database_port }}
+          Features: Real-time monitoring, Interactive testing, API endpoints
+          ============================================
+
+    - name: Create enhanced application directory structure
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - /opt/docker/application
+        - /opt/docker/application/html
+        - /opt/docker/application/static
+        - /opt/docker/application/templates
+        - "{{ app_log_dir }}"
+        - /etc/nginx/conf.d
+
+    - name: Install required system packages
+      package:
+        name:
+          - nginx
+          - docker
+          - python3
+          - python3-pip
+          - curl
+          - wget
+        state: present
+
+    - name: Start and enable Docker service
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Create enhanced application backend
+      copy:
+        src: "{{ playbook_dir }}/../application/enhanced_backend.py"
+        dest: /opt/docker/application/enhanced_backend.py
+        mode: '0644'
+
+    - name: Create enhanced application frontend (dashboard)
+      copy:
+        src: "{{ playbook_dir }}/../application/enhanced_app.html"
+        dest: /opt/docker/application/html/enhanced_app.html
+        mode: '0644'
+
+    - name: Create requirements.txt for enhanced application
+      copy:
+        src: "{{ playbook_dir }}/../application/requirements.txt"
+        dest: /opt/docker/application/requirements.txt
+        mode: '0644'
+
+    - name: Copy enhanced application static files (CSS)
+      copy:
+        src: "{{ playbook_dir }}/../application/static/"
+        dest: /opt/docker/application/static/
+        mode: '0644'
+
+    - name: Copy enhanced application templates
+      copy:
+        src: "{{ playbook_dir }}/../application/templates/"
+        dest: /opt/docker/application/templates/
+        mode: '0644'
+
+    - name: Create enhanced application index page
+      copy:
+        content: |
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>SIMPLE Production Infrastructure - Enhanced Dashboard</title>
+              <style>
+                  body {
+                      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                      margin: 0;
+                      padding: 20px;
+                      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                      color: #333;
+                      min-height: 100vh;
+                      display: flex;
+                      align-items: center;
+                      justify-content: center;
+                  }
+                  .container {
+                      max-width: 600px;
+                      background: rgba(255, 255, 255, 0.95);
+                      border-radius: 15px;
+                      padding: 40px;
+                      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+                      text-align: center;
+                  }
+                  .title {
+                      color: #667eea;
+                      font-size: 2.5em;
+                      margin-bottom: 20px;
+                      text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                  }
+                  .subtitle {
+                      color: #666;
+                      font-size: 1.2em;
+                      margin-bottom: 30px;
+                  }
+                  .redirect-btn {
+                      background: linear-gradient(45deg, #667eea, #764ba2);
+                      color: white;
+                      border: none;
+                      padding: 15px 30px;
+                      border-radius: 8px;
+                      font-size: 18px;
+                      cursor: pointer;
+                      transition: transform 0.3s ease;
+                      text-decoration: none;
+                      display: inline-block;
+                      margin: 10px;
+                  }
+                  .redirect-btn:hover {
+                      transform: translateY(-2px);
+                      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+                  }
+                  .server-info {
+                      background: #f8f9fa;
+                      border-radius: 10px;
+                      padding: 20px;
+                      margin: 20px 0;
+                      border-left: 4px solid #667eea;
+                  }
+                  .feature-list {
+                      text-align: left;
+                      background: #f8f9fa;
+                      padding: 20px;
+                      border-radius: 10px;
+                      margin: 20px 0;
+                  }
+                  .feature-list ul {
+                      margin: 0;
+                      padding-left: 20px;
+                  }
+                  .feature-list li {
+                      margin: 8px 0;
+                      color: #555;
+                  }
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <h1 class="title">🚀 SIMPLE Production</h1>
+                  <p class="subtitle">Enhanced Infrastructure Dashboard v{{ enhanced_app_version }}</p>
+                  
+                  <div class="server-info">
+                      <p><strong>Server:</strong> {{ inventory_hostname }}</p>
+                      <p><strong>Environment:</strong> Production</p>
+                      <p><strong>Status:</strong> Enhanced Application Active</p>
+                      <p><strong>Load Balancer:</strong> 192.168.122.100</p>
+                  </div>
+                  
+                  <div class="feature-list">
+                      <h3>🎯 Enhanced Features:</h3>
+                      <ul>
+                          <li>✅ Real-time infrastructure monitoring</li>
+                          <li>✅ Interactive Redis cache testing</li>
+                          <li>✅ PostgreSQL database operations</li>
+                          <li>✅ Cross-tier session management</li>
+                          <li>✅ Load testing capabilities</li>
+                          <li>✅ Live performance metrics</li>
+                          <li>✅ Web-based API endpoints</li>
+                      </ul>
+                  </div>
+                  
+                  <a href="/enhanced_app.html" class="redirect-btn">🎛️ Open Enhanced Dashboard</a>
+                  <a href="/health" class="redirect-btn">❤️ Health Check</a>
+                  <a href="/api/infrastructure/status" class="redirect-btn">📊 API Status</a>
+                  
+                  <script>
+                      // Auto-redirect to enhanced dashboard after 5 seconds
+                      setTimeout(() => {
+                          window.location.href = '/enhanced_app.html';
+                      }, 5000);
+                  </script>
+              </div>
+          </body>
+          </html>
+        dest: "{{ app_content_dir }}/index.html"
+        mode: '0644'
+
+    - name: Create NGINX main configuration
+      copy:
+        content: |
+          user nginx;
+          worker_processes {{ nginx_worker_processes }};
+          error_log /var/log/nginx/error.log warn;
+          pid /var/run/nginx.pid;
+
+          events {
+              worker_connections {{ nginx_worker_connections }};
+              use epoll;
+              multi_accept on;
+          }
+
+          http {
+              include /etc/nginx/mime.types;
+              default_type application/octet-stream;
+
+              # Logging format for enhanced monitoring
+              log_format enhanced '$remote_addr - $remote_user [$time_local] "$request" '
+                                '$status $body_bytes_sent "$http_referer" '
+                                '"$http_user_agent" "$http_x_forwarded_for" '
+                                'rt=$request_time uct="$upstream_connect_time" '
+                                'uht="$upstream_header_time" urt="$upstream_response_time" '
+                                'server="$server_name" upstream="$upstream_addr"';
+
+              access_log {{ app_log_dir }}/access.log enhanced;
+
+              # Performance settings
+              sendfile on;
+              tcp_nopush on;
+              tcp_nodelay on;
+              keepalive_timeout 65;
+              types_hash_max_size 2048;
+              client_max_body_size 100M;
+
+              # Gzip compression
+              gzip on;
+              gzip_vary on;
+              gzip_min_length 1024;
+              gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+
+              # Include server configurations
+              include /etc/nginx/conf.d/*.conf;
+          }
+        dest: /etc/nginx/nginx.conf
+        backup: yes
+
+    - name: Create enhanced application server configuration
+      copy:
+        content: |
+          # Enhanced SIMPLE Application Server Configuration
+          # Supports both static content and API endpoints
+
+          # Upstream for enhanced application backend
+          upstream enhanced_app_backend {
+              server 127.0.0.1:8080 max_fails=3 fail_timeout=30s;
+              keepalive 32;
+          }
+
+          # Main application server
+          server {
+              listen 80 default_server;
+              listen [::]:80 default_server;
+              server_name {{ inventory_hostname }} {{ ansible_host }};
+              root {{ app_content_dir }};
+              index index.html enhanced_app.html;
+
+              # Enhanced logging
+              access_log {{ app_log_dir }}/{{ inventory_hostname }}_access.log enhanced;
+              error_log {{ app_log_dir }}/{{ inventory_hostname }}_error.log warn;
+
+              # Security headers
+              add_header X-Frame-Options DENY;
+              add_header X-Content-Type-Options nosniff;
+              add_header X-XSS-Protection "1; mode=block";
+
+              # Static content (served by NGINX)
+              location / {
+                  try_files $uri $uri/ /index.html;
+                  expires 1h;
+                  add_header Cache-Control "public, immutable";
+              }
+
+              # Enhanced application dashboard
+              location /enhanced_app.html {
+                  try_files $uri =404;
+                  expires 5m;
+              }
+
+              # API endpoints (proxied to enhanced backend)
+              location /api/ {
+                  proxy_pass http://enhanced_app_backend;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+                  
+                  # API-specific settings
+                  proxy_connect_timeout 10s;
+                  proxy_send_timeout 30s;
+                  proxy_read_timeout 30s;
+                  
+                  # Disable caching for API responses
+                  expires off;
+                  add_header Cache-Control "no-cache, no-store, must-revalidate";
+              }
+
+              # Health check endpoint (proxied to backend)
+              location /health {
+                  proxy_pass http://enhanced_app_backend/health;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+                  
+                  access_log off;
+                  proxy_connect_timeout 5s;
+                  proxy_send_timeout 10s;
+                  proxy_read_timeout 10s;
+              }
+
+              # Status and info endpoints
+              location ~ ^/(status|info)$ {
+                  proxy_pass http://enhanced_app_backend;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+              }
+
+              # NGINX status for monitoring
+              location /nginx_status {
+                  stub_status on;
+                  access_log off;
+                  allow 192.168.122.0/24;
+                  deny all;
+              }
+
+              # Error pages
+              error_page 404 /404.html;
+              error_page 500 502 503 504 /50x.html;
+              
+              location = /50x.html {
+                  root /usr/share/nginx/html;
+              }
+          }
+
+          # Health check server (separate port for load balancer)
+          server {
+              listen {{ app_health_port }};
+              server_name {{ inventory_hostname }};
+
+              # Dedicated health endpoint for load balancer
+              location /health {
+                  access_log off;
+                  return 200 "healthy\n";
+                  add_header Content-Type text/plain;
+                  add_header X-Health-Server "{{ inventory_hostname }}";
+                  add_header X-Health-Version "{{ enhanced_app_version }}";
+              }
+
+              # Metrics endpoint for monitoring
+              location /metrics {
+                  proxy_pass http://enhanced_app_backend/api/infrastructure/status;
+                  proxy_set_header Host $host;
+                  access_log off;
+              }
+          }
+        dest: /etc/nginx/conf.d/enhanced_app.conf
+        mode: '0644'
+
+    - name: Create 404 error page
+      copy:
+        content: |
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>404 - Page Not Found | SIMPLE Production</title>
+              <style>
+                  body { 
+                      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                      text-align: center; 
+                      padding: 50px; 
+                      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                      min-height: 100vh;
+                      margin: 0;
+                      display: flex;
+                      align-items: center;
+                      justify-content: center;
+                  }
+                  .container {
+                      background: white;
+                      padding: 40px;
+                      border-radius: 15px;
+                      box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+                      max-width: 500px;
+                  }
+                  .error { color: #e74c3c; font-size: 4em; margin-bottom: 20px; }
+                  .message { color: #666; font-size: 1.2em; margin-bottom: 30px; }
+                  .back-btn {
+                      background: #667eea;
+                      color: white;
+                      padding: 10px 20px;
+                      text-decoration: none;
+                      border-radius: 5px;
+                      transition: background 0.3s;
+                  }
+                  .back-btn:hover { background: #5a67d8; }
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <div class="error">404</div>
+                  <div class="message">Page not found on SIMPLE Production Server</div>
+                  <p>The requested page could not be found on this server.</p>
+                  <a href="/" class="back-btn">← Back to Dashboard</a>
+              </div>
+          </body>
+          </html>
+        dest: "{{ app_content_dir }}/404.html"
+        mode: '0644'
+
+    - name: Create enhanced Docker Compose file for application
+      copy:
+        content: |
+          version: '3.8'
+          services:
+            enhanced-simple-app:
+              image: python:3.11-slim
+              container_name: simple-enhanced-app
+              restart: unless-stopped
+              working_dir: /app
+              volumes:
+                - /opt/docker/application:/app
+              ports:
+                - "{{ app_port }}:{{ app_port }}"
+              environment:
+                - FLASK_APP=enhanced_backend.py
+                - FLASK_ENV=production
+                - PYTHONUNBUFFERED=1
+                - REDIS_HOST={{ redis_host }}
+                - DATABASE_HOST={{ database_host }}
+              command: >
+                bash -c "
+                apt-get update > /dev/null 2>&1 &&
+                apt-get install -y postgresql-client redis-tools curl > /dev/null 2>&1 &&
+                pip install --no-cache-dir -r requirements.txt > /dev/null 2>&1 &&
+                mkdir -p templates static/css static/js &&
+                python enhanced_backend.py
+                "
+              healthcheck:
+                test: ["CMD", "curl", "-f", "http://localhost:{{ app_port }}/health"]
+                interval: 30s
+                timeout: 10s
+                retries: 3
+                start_period: 10s
+              networks:
+                - simple-network
+
+          networks:
+            simple-network:
+              driver: bridge
+        dest: /opt/docker/application/docker-compose.yml
+        mode: '0644'
+
+    - name: Create enhanced application startup script
+      copy:
+        content: |
+          #!/bin/bash
+          # Enhanced SIMPLE Application Startup Script
+          
+          set -e
+          
+          echo "====================================="
+          echo "Starting Enhanced SIMPLE Application"
+          echo "====================================="
+          echo "Server: {{ inventory_hostname }}"
+          echo "Version: {{ enhanced_app_version }}"
+          echo "Port: {{ app_port }}"
+          echo "Redis: {{ redis_host }}:{{ redis_port }}"
+          echo "Database: {{ database_host }}:{{ database_port }}"
+          echo "====================================="
+          
+          cd /opt/docker/application
+          
+          # Stop any existing containers
+          docker-compose down 2>/dev/null || true
+          
+          # Remove old containers
+          docker rm -f simple-enhanced-app simple-app-container 2>/dev/null || true
+          
+          # Start enhanced application
+          echo "Starting enhanced application container..."
+          docker-compose up -d
+          
+          # Wait for application to start
+          echo "Waiting for application to start..."
+          sleep 15
+          
+          # Verify application is running
+          if docker ps | grep -q simple-enhanced-app; then
+              echo "✅ Enhanced application container is running"
+              
+              # Test health endpoint
+              if curl -s http://localhost:{{ app_port }}/health > /dev/null; then
+                  echo "✅ Enhanced application health check passed"
+                  echo "🌐 Application accessible at: http://{{ ansible_host }}:{{ app_port }}"
+                  echo "🎛️ Enhanced dashboard at: http://{{ ansible_host }}/enhanced_app.html"
+              else
+                  echo "⚠️  Health check failed, but container is running"
+              fi
+          else
+              echo "❌ Enhanced application failed to start"
+              docker logs simple-enhanced-app 2>/dev/null || echo "No logs available"
+              exit 1
+          fi
+          
+          echo "Enhanced SIMPLE Application startup complete!"
+        dest: /opt/docker/application/start_enhanced_app.sh
+        mode: '0755'
+
+    - name: Start and enable NGINX service
+      systemd:
+        name: nginx
+        state: started
+        enabled: yes
+
+    - name: Test NGINX configuration
+      command: nginx -t
+      register: nginx_test
+      ignore_errors: yes
+
+    - name: Reload NGINX if configuration is valid
+      systemd:
+        name: nginx
+        state: reloaded
+      when: nginx_test.rc == 0
+
+    - name: Start enhanced application
+      command: /opt/docker/application/start_enhanced_app.sh
+      register: app_start_result
+      ignore_errors: yes
+
+    - name: Create enhanced application setup completion marker
+      copy:
+        content: |
+          Enhanced SIMPLE Application Setup Completed
+          Date: {{ ansible_date_time.iso8601 }}
+          Host: {{ inventory_hostname }} ({{ ansible_host }})
+          Application: {{ app_name }} v{{ enhanced_app_version }}
+          App Port: {{ app_port }}
+          Health Port: {{ app_health_port }}
+          NGINX Configuration: /etc/nginx/conf.d/enhanced_app.conf
+          Application Directory: /opt/docker/application
+          Docker Compose: /opt/docker/application/docker-compose.yml
+          Enhanced Features:
+          - Real-time infrastructure monitoring
+          - Interactive Redis cache operations  
+          - PostgreSQL database integration
+          - Cross-tier session management
+          - Load testing capabilities
+          - Live performance metrics
+          - Web-based API endpoints
+          Redis Integration: {{ redis_host }}:{{ redis_port }}
+          Database Integration: {{ database_host }}:{{ database_port }}
+          Application Status: {{ 'RUNNING' if app_start_result.rc == 0 else 'NEEDS ATTENTION' }}
+          Access URLs:
+          - Main Dashboard: http://{{ ansible_host }}/
+          - Enhanced Dashboard: http://{{ ansible_host }}/enhanced_app.html
+          - Health Check: http://{{ ansible_host }}/health
+          - API Status: http://{{ ansible_host }}/api/infrastructure/status
+          - Load Balancer Access: http://192.168.122.100/
+        dest: /opt/enhanced-app-setup-complete.txt
+        mode: '0644'
+
+  handlers:
+    - name: restart nginx
+      systemd:
+        name: nginx
+        state: restarted
+
+    - name: restart enhanced app
+      command: /opt/docker/application/start_enhanced_app.sh
+
+  post_tasks:
+    - name: Display enhanced application setup summary
+      debug:
+        msg: |
+          ===== ENHANCED APPLICATION SERVER SETUP SUMMARY =====
+          Host: {{ inventory_hostname }}
+          Enhanced Application: {{ app_name }} v{{ enhanced_app_version }}
+          NGINX Status: {{ 'CONFIGURED' if nginx_test.rc == 0 else 'NEEDS ATTENTION' }}
+          Application Status: {{ 'RUNNING' if app_start_result.rc == 0 else 'NEEDS ATTENTION' }}
+          Main URL: http://{{ ansible_host }}/
+          Enhanced Dashboard: http://{{ ansible_host }}/enhanced_app.html
+          Health Check: http://{{ ansible_host }}/health
+          API Endpoints: http://{{ ansible_host }}/api/*
+          Load Balancer URL: http://192.168.122.100/
+          Features: Real-time monitoring, Interactive testing, API integration
+          Redis Integration: {{ redis_host }}:{{ redis_port }}
+          Database Integration: {{ database_host }}:{{ database_port }}
+          Status: Enhanced application deployment complete
+          =====================================================

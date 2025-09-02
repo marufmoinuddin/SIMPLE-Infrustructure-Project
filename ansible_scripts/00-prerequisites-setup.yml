@@ -1,0 +1,325 @@
+---
+# Ansible Playbook 0:  vars:
+    # Set to true to install and configure firewalld, false to skip
+    configure_firewall: true
+    # Skip Docker installation on database hosts
+    skip_docker_on_databases: true
+    docker_packages:requisites Setup
+# Install Docker, Docker Compose, and essential tools on all VMs
+# Target: All VMs (CentOS 10)
+# Date: August 22, 2025
+#
+# Docker Installation Method: RPM Repository (Official Docker Tutorial)
+# Docker Compose Installation: Repository Plugin Method
+# Reference: https://docs.docker.com/engine/install/centos/
+# Reference: https://docs.docker.com/compose/install/linux/
+# 
+# Steps implemented from tutorial:
+# 1. Install dnf-plugins-core package
+# 2. Set up Docker repository from download.docker.com
+# 3. Install Docker packages including docker-compose-plugin
+# 4. Start and enable Docker service
+# 5. Verify installation with hello-world image
+# 6. Verify Docker Compose with 'docker compose version'
+# 7. Add user to docker group for non-root access
+# 8. Optional: Configure firewalld (controlled by configure_firewall variable)
+# 9. Optional: Skip Docker on database hosts (controlled by skip_docker_on_databases variable)
+
+- name: Setup Prerequisites - Docker and Essential Tools
+  hosts: allvms
+  become: yes
+  gather_facts: yes
+  vars:
+    # Set to true to install and configure firewalld, false to skip
+    configure_firewall: false
+    docker_packages:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    essential_packages:
+      - git
+      - curl
+      - wget
+      - unzip
+      - vim
+      - nano
+      - net-tools
+      - telnet
+      - nc
+      - tree
+      - python3-pip
+
+  tasks:
+    - name: Display target host information
+      debug:
+        msg: "Setting up prerequisites on {{ inventory_hostname }} ({{ ansible_host }})"
+
+    - name: Display firewall configuration status
+      debug:
+        msg: |
+          Firewall Configuration: {{ 'ENABLED' if (configure_firewall | default(false) | bool) else 'DISABLED' }}
+          Note: Set configure_firewall=true in vars section to enable firewall setup
+          Note: Set configure_firewall=false or omit to skip firewall configuration
+
+    - name: Display Docker installation status
+      debug:
+        msg: |
+          Docker Installation: {{ 'SKIPPED - Database Host' if (skip_docker_on_databases and 'databases' in group_names) else 'ENABLED' }}
+          Host Group: {{ group_names | join(', ') }}
+          Note: Docker installation is skipped on database hosts when skip_docker_on_databases=true
+
+    - name: Update system packages (DNF for CentOS 10)
+      dnf:
+        name: "*"
+        state: latest
+        update_cache: yes
+      register: system_update
+      retries: 3
+      delay: 10
+
+    - name: Install essential packages
+      dnf:
+        name: "{{ essential_packages }}"
+        state: present
+      register: essential_install
+      retries: 3
+      delay: 5
+
+    # Set up the Docker repository (following official tutorial)
+    - name: Install dnf-plugins-core package
+      dnf:
+        name: dnf-plugins-core
+        state: present
+      register: dnf_plugins_install
+      when: not (skip_docker_on_databases and 'databases' in group_names)
+
+    - name: Add Docker CE repository
+      shell: |
+        dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+      args:
+        creates: /etc/yum.repos.d/docker-ce.repo
+      when: not (skip_docker_on_databases and 'databases' in group_names)
+
+    # Install Docker Engine (following official tutorial)
+    - name: Install Python Docker libraries
+      pip:
+        name:
+          - docker
+          - docker-compose
+        state: present
+        executable: pip3
+      when: not (skip_docker_on_databases and 'databases' in group_names)
+
+    - name: Verify Docker GPG key fingerprint
+      debug:
+        msg: "Docker packages installed. GPG key fingerprint should be: 060A 61C5 1B55 8A7F 742B 77AA C52F EB6B 621E 9F35"
+      when: not (skip_docker_on_databases and 'databases' in group_names)
+
+    # Start Docker Engine (following official tutorial approach)
+    - name: Enable and start Docker service
+      systemd:
+        name: docker
+        enabled: yes
+        state: started
+        daemon_reload: yes
+      when: not (skip_docker_on_databases and 'databases' in group_names)
+
+    - name: Add user to docker group (for non-root access)
+      user:
+        name: "{{ ansible_user }}"
+        groups: docker
+        append: yes
+      when: 
+        - ansible_user != "root"
+        - not (skip_docker_on_databases and 'databases' in group_names)
+
+    - name: Display docker group information
+      debug:
+        msg: |
+          IMPORTANT: Docker group has been created and user added.
+          To allow non-privileged users to run Docker commands:
+          - The docker group exists but may need a logout/login to take effect
+          - Without group membership, sudo is required to run Docker commands
+          - This follows the Docker installation tutorial recommendations
+      when: not (skip_docker_on_databases and 'databases' in group_names)
+
+    # Install Docker Compose from repository (following official tutorial)
+    # Note: docker-compose-plugin is already included in docker_packages list above
+    # This section serves as verification and fallback
+    - name: Ensure Docker Compose plugin is installed from repository
+      dnf:
+        name: docker-compose-plugin
+        state: present
+      register: compose_plugin_install
+      when: not (skip_docker_on_databases and 'databases' in group_names)
+
+    - name: Configure Docker daemon for production
+      copy:
+        content: |
+          {
+            "log-driver": "json-file",
+            "log-opts": {
+              "max-size": "10m",
+              "max-file": "3"
+            },
+            "storage-driver": "overlay2",
+            "live-restore": true,
+            "userland-proxy": false,
+            "experimental": false,
+            "metrics-addr": "0.0.0.0:9323",
+            "iptables": true
+          }
+        dest: /etc/docker/daemon.json
+        mode: '0644'
+        backup: yes
+      notify: restart docker
+      when: not (skip_docker_on_databases and 'databases' in group_names)
+
+    - name: Create Docker directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+        owner: root
+        group: root
+      loop:
+        - /opt/docker
+        - /opt/docker/compose
+        - /opt/docker/volumes
+        - /opt/app
+        - /var/log/docker-apps
+      when: not (skip_docker_on_databases and 'databases' in group_names)
+
+    - name: Install firewalld (optional - controlled by configure_firewall variable)
+      dnf:
+        name: firewalld
+        state: present
+      when: configure_firewall | default(false) | bool
+      register: firewalld_install
+
+    - name: Start and enable firewalld service
+      systemd:
+        name: firewalld
+        state: started
+        enabled: yes
+      when: configure_firewall | default(false) | bool
+
+    - name: Configure firewalld for Docker
+      firewalld:
+        zone: public
+        service: "{{ item }}"
+        permanent: yes
+        state: enabled
+        immediate: yes
+      loop:
+        - ssh
+        - http
+        - https
+      ignore_errors: yes
+      when: configure_firewall | default(false) | bool
+
+    - name: Configure firewalld for custom ports
+      firewalld:
+        zone: public
+        port: "{{ item }}"
+        permanent: yes
+        state: enabled
+        immediate: yes
+      loop:
+        - "8080/tcp"   # App servers
+        - "6379/tcp"   # Redis
+        - "5432/tcp"   # PostgreSQL
+        - "9323/tcp"   # Docker metrics
+      ignore_errors: yes
+      when: configure_firewall | default(false) | bool
+
+    - name: Test Docker installation with hello-world image
+      command: docker run hello-world
+      register: docker_hello_world
+      changed_when: false
+      become: yes
+      when: not (skip_docker_on_databases and 'databases' in group_names)
+
+    - name: Display hello-world test result
+      debug:
+        msg: "Docker hello-world test: {{ 'SUCCESS' if docker_hello_world.rc == 0 else 'FAILED' }}"
+      when: not (skip_docker_on_databases and 'databases' in group_names)
+
+    - name: Test Docker installation
+      command: docker --version
+      register: docker_version
+      changed_when: false
+      when: not (skip_docker_on_databases and 'databases' in group_names)
+
+    - name: Test Docker Compose installation (repository version)
+      command: docker compose version
+      register: compose_version
+      changed_when: false
+      when: not (skip_docker_on_databases and 'databases' in group_names)
+
+    - name: Display Docker version
+      debug:
+        msg: "Docker installed: {{ docker_version.stdout }}"
+      when: not (skip_docker_on_databases and 'databases' in group_names)
+
+    - name: Display Docker Compose version
+      debug:
+        msg: "Docker Compose installed: {{ compose_version.stdout }}"
+      when: not (skip_docker_on_databases and 'databases' in group_names)
+
+    - name: Display Docker skip message for database hosts
+      debug:
+        msg: "Docker installation skipped on database host as per configuration"
+      when: skip_docker_on_databases and 'databases' in group_names
+
+    - name: Verify Docker service is running
+      systemd:
+        name: docker
+        state: started
+      register: docker_status
+      when: not (skip_docker_on_databases and 'databases' in group_names)
+
+    - name: Create prerequisite completion marker
+      copy:
+        content: |
+          Prerequisites Setup Completed
+          Date: {{ ansible_date_time.iso8601 }}
+          Host: {{ inventory_hostname }}
+          {% if not (skip_docker_on_databases and 'databases' in group_names) %}
+          Docker Version: {{ docker_version.stdout }}
+          Compose Version: {{ compose_version.stdout }}
+          {% else %}
+          Docker Installation: Skipped (Database Host)
+          {% endif %}
+          Role: {{ role | default('undefined') }}
+        dest: /opt/prerequisites-complete.txt
+        mode: '0644'
+
+  handlers:
+    - name: restart docker
+      systemd:
+        name: docker
+        state: restarted
+        daemon_reload: yes
+      when: not (skip_docker_on_databases and 'databases' in group_names)
+
+    - name: reload firewalld
+      systemd:
+        name: firewalld
+        state: reloaded
+      when: configure_firewall | default(false) | bool
+
+  post_tasks:
+    - name: Final verification - Docker hello world (as per tutorial)
+      command: docker run hello-world
+      register: final_hello_world_test
+      ignore_errors: yes
+      become: yes
+      when: not (skip_docker_on_databases and 'databases' in group_names)
+
+    - name: Display tutorial completion status
+      debug:
+        msg: |
+          ===== DOCKER INSTALLATION TUTORIAL COMPLETED =====

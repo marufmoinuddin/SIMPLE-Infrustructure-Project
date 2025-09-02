@@ -1,0 +1,599 @@
+---
+# Ansible Playbook 4: PostgreSQL Database Setup with pgpool
+# Deploy PostgreSQL Master-Slave with Read/Write Separation
+# Target: Database Server VMs (db1, db2)
+# Date: August 22, 2025
+#
+# Database Configuration:
+# - PostgreSQL Master-Slave replication (Streaming replication) - STANDALONE INSTALLATION
+# - pgpool-II for connection pooling and load balancing
+# - db1 (Master): Read + Write operations
+# - db2 (Slave): Read-only replica for high availability
+# - Automatic failover capabilities
+# - Native PostgreSQL installation on CentOS 10
+#
+# Architecture Implementation:
+# - db1 (192.168.122.131:5432) - PostgreSQL Master (Standalone)
+# - db2 (192.168.122.132:5432) - PostgreSQL Slave (Standalone)
+# - pgpool on both nodes (port 9999) for connection management
+# - If master fails, slave continues serving read operations
+#
+# Reference: PostgreSQL Official Documentation
+# Reference: pgpool-II Configuration Guide
+
+- name: Setup PostgreSQL Database - Master-Slave with pgpool
+  hosts: databases
+  become: yes
+  gather_facts: yes
+  vars:
+    # PostgreSQL Configuration
+    postgres_version: "15"
+    postgres_user: "postgres"
+    postgres_password: "atom_postgres_secure_2025"
+    postgres_db: "atom_app_db"
+    postgres_port: 5432
+    
+    # Application Database
+    app_db_name: "atom_app_db"
+    app_db_user: "atom_app_user"
+    app_db_password: "atom_app_pass_2025"
+    
+    # Replication Configuration
+    replication_user: "replicator"
+    replication_password: "atom_repl_secure_2025"
+    
+    # pgpool Configuration
+    pgpool_port: 9999
+    pgpool_admin_user: "pgpool_admin"
+    pgpool_admin_password: "atom_pgpool_admin_2025"
+    
+    # Database Server IPs
+    db_servers:
+      - { name: "db1", ip: "192.168.122.131", role: "master", node_id: 0 }
+      - { name: "db2", ip: "192.168.122.132", role: "slave", node_id: 1 }
+    
+    # Standalone PostgreSQL Configuration
+    postgres_data_dir: "/var/lib/pgsql/15/data"
+    postgres_config_dir: "/var/lib/pgsql/15/data"
+    postgres_bin_dir: "/usr/pgsql-15/bin"
+    postgres_service: "postgresql-15"
+    
+    # pgpool Configuration (standalone)
+    pgpool_config_dir: "/etc/pgpool-II"
+    pgpool_service: "pgpool-II"
+    
+    # Backup Configuration
+    backup_dir: "/opt/postgres_backups"
+    backup_retention_days: 7
+
+  tasks:
+    - name: Display database setup information
+      debug:
+        msg: |
+          ===== POSTGRESQL DATABASE SETUP (STANDALONE) =====
+          Host: {{ inventory_hostname }} ({{ ansible_host }})
+          Role: {{ role }}
+          DB Role: {{ 'MASTER (Read+Write)' if inventory_hostname == 'db1' else 'SLAVE (Read-only)' }}
+          PostgreSQL Port: {{ postgres_port }}
+          pgpool Port: {{ pgpool_port }}
+          Version: PostgreSQL {{ postgres_version }}
+          Installation: Standalone (Native)
+          Replication: Streaming replication enabled
+          ==================================================
+
+    - name: Install EPEL repository
+      dnf:
+        name: epel-release
+        state: present
+      register: epel_install
+      retries: 3
+      delay: 5
+
+    - name: Install dnf plugins core
+      dnf:
+        name: dnf-plugins-core
+        state: present
+
+    - name: Enable CodeReady Builder repository (CRB) for CentOS Stream
+      command: dnf config-manager --set-enabled crb
+      register: crb_enable
+      changed_when: crb_enable.rc == 0
+
+    - name: Install required Perl dependencies
+      dnf:
+        name: perl-IPC-Run
+        state: present
+      retries: 3
+      delay: 5
+
+    - name: Install PostgreSQL repository
+      dnf:
+        name: "https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm"
+        state: present
+        disable_gpg_check: yes
+      register: postgres_repo_install
+      retries: 3
+      delay: 5
+
+    - name: Install PostgreSQL packages
+      dnf:
+        name:
+          - postgresql15-server
+          - postgresql15
+          - postgresql15-contrib
+          - postgresql15-devel
+          - python3-psycopg2
+        state: present
+      register: postgres_install
+      retries: 3
+      delay: 10
+
+    - name: Install pgpool-II packages
+      dnf:
+        name:
+          - pgpool-II
+          - pgpool-II-pg15-extensions
+          - pgpool-II-pcp
+        state: present
+      register: pgpool_install
+      retries: 3
+      delay: 5
+
+    - name: Create backup directory
+      file:
+        path: "{{ backup_dir }}"
+        state: directory
+        mode: '0755'
+        owner: postgres
+        group: postgres
+
+    - name: Create WAL archive directory
+      file:
+        path: "{{ backup_dir }}/wal_archive"
+        state: directory
+        mode: '0755'
+        owner: postgres
+        group: postgres
+
+    - name: Initialize PostgreSQL database (Master only)
+      shell: "{{ postgres_bin_dir }}/postgresql-15-setup initdb"
+      args:
+        creates: "{{ postgres_data_dir }}/PG_VERSION"
+      become: yes
+      become_user: root
+      when: inventory_hostname == 'db1'
+
+    - name: Start and enable PostgreSQL service (Master only - initial)
+      systemd:
+        name: "{{ postgres_service }}"
+        state: started
+        enabled: yes
+      when: inventory_hostname == 'db1'
+
+    - name: Create PostgreSQL configuration
+      copy:
+        content: |
+          # PostgreSQL Configuration for {{ inventory_hostname }}
+          # Generated by Ansible on {{ ansible_date_time.iso8601 }}
+          
+          # Connection settings
+          listen_addresses = '*'
+          port = {{ postgres_port }}
+          max_connections = 200
+          
+          # Memory settings
+          shared_buffers = 256MB
+          effective_cache_size = 1GB
+          maintenance_work_mem = 64MB
+          checkpoint_completion_target = 0.9
+          wal_buffers = 16MB
+          default_statistics_target = 100
+          random_page_cost = 1.1
+          effective_io_concurrency = 200
+          
+          # Write-Ahead Logging (WAL) settings
+          wal_level = replica
+          max_wal_senders = 3
+          max_replication_slots = 3
+          wal_keep_size = 1GB
+          
+          # Archiving settings
+          archive_mode = on
+          archive_command = 'cp %p {{ backup_dir }}/wal_archive/%f'
+          
+          # Replication settings
+          hot_standby = on
+          hot_standby_feedback = on
+          
+          # Logging settings
+          log_destination = 'stderr'
+          logging_collector = on
+          log_directory = 'log'
+          log_filename = 'postgresql-%Y-%m-%d_%H%M%S.log'
+          log_statement = 'mod'
+          log_min_duration_statement = 1000
+          log_checkpoints = on
+          log_connections = on
+          log_disconnections = on
+          log_lock_waits = on
+          
+          # Security settings
+          ssl = off
+          password_encryption = scram-sha-256
+          
+          # Performance tuning
+          checkpoint_timeout = 5min
+          max_wal_size = 1GB
+          min_wal_size = 80MB
+          
+          # Vacuum settings
+          autovacuum = on
+          autovacuum_max_workers = 3
+          autovacuum_naptime = 1min
+        dest: "{{ postgres_config_dir }}/postgresql.conf"
+        owner: postgres
+        group: postgres
+        mode: '0600'
+        backup: yes
+      notify: restart postgresql
+
+    - name: Create PostgreSQL host-based authentication
+      copy:
+        content: |
+          # PostgreSQL Client Authentication Configuration
+          # TYPE  DATABASE        USER            ADDRESS                 METHOD
+          
+          # Local connections
+          local   all             all                                     peer
+          local   replication     all                                     peer
+          
+          # IPv4 local connections
+          host    all             all             127.0.0.1/32            scram-sha-256
+          host    all             all             ::1/128                 scram-sha-256
+          
+          # Application connections
+          host    {{ app_db_name }}    {{ app_db_user }}    192.168.122.0/24    scram-sha-256
+          host    {{ postgres_db }}    {{ postgres_user }}  192.168.122.0/24    scram-sha-256
+          
+          # Replication connections
+          host    replication     {{ replication_user }}   192.168.122.0/24    scram-sha-256
+          host    replication     {{ postgres_user }}      192.168.122.0/24    scram-sha-256
+          
+          # pgpool connections
+          host    all             {{ pgpool_admin_user }}  192.168.122.0/24    scram-sha-256
+          
+          # Allow all connections from internal network
+          host    all             all             192.168.122.0/24        scram-sha-256
+        dest: "{{ postgres_config_dir }}/pg_hba.conf"
+        owner: postgres
+        group: postgres
+        mode: '0600'
+        backup: yes
+      notify: restart postgresql
+
+    - name: Restart PostgreSQL to apply configuration (Master)
+      systemd:
+        name: "{{ postgres_service }}"
+        state: restarted
+      when: inventory_hostname == 'db1'
+
+    - name: Wait for PostgreSQL to be ready (Master)
+      wait_for:
+        port: "{{ postgres_port }}"
+        host: "{{ ansible_host }}"
+        timeout: 60
+      when: inventory_hostname == 'db1'
+
+    - name: Create replication user (Master only)
+      postgresql_user:
+        name: "{{ replication_user }}"
+        password: "{{ replication_password }}"
+        role_attr_flags: REPLICATION
+        state: present
+      become: yes
+      become_user: postgres
+      when: inventory_hostname == 'db1'
+
+    - name: Create application database (Master only)
+      postgresql_db:
+        name: "{{ app_db_name }}"
+        owner: postgres
+        state: present
+      become: yes
+      become_user: postgres
+      when: inventory_hostname == 'db1'
+
+    - name: Create application user (Master only)
+      postgresql_user:
+        name: "{{ app_db_user }}"
+        password: "{{ app_db_password }}"
+        db: "{{ app_db_name }}"
+        priv: ALL
+        state: present
+      become: yes
+      become_user: postgres
+      when: inventory_hostname == 'db1'
+
+    - name: Create pgpool admin user (Master only)
+      postgresql_user:
+        name: "{{ pgpool_admin_user }}"
+        password: "{{ pgpool_admin_password }}"
+        role_attr_flags: CREATEDB
+        state: present
+      become: yes
+      become_user: postgres
+      when: inventory_hostname == 'db1'
+
+    - name: Create sample tables (Master only)
+      postgresql_query:
+        db: "{{ app_db_name }}"
+        query: |
+          CREATE TABLE IF NOT EXISTS users (
+              id SERIAL PRIMARY KEY,
+              username VARCHAR(50) UNIQUE NOT NULL,
+              email VARCHAR(100) UNIQUE NOT NULL,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );
+          
+          CREATE TABLE IF NOT EXISTS sessions (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              user_id INTEGER REFERENCES users(id),
+              session_data JSONB,
+              expires_at TIMESTAMP,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );
+          
+          INSERT INTO users (username, email) VALUES 
+              ('admin', 'admin@simple-lab.local'),
+              ('user1', 'user1@simple-lab.local'),
+              ('user2', 'user2@simple-lab.local')
+          ON CONFLICT (username) DO NOTHING;
+      become: yes
+      become_user: postgres
+      when: inventory_hostname == 'db1'
+
+    - name: Stop PostgreSQL on slave for basebackup
+      systemd:
+        name: "{{ postgres_service }}"
+        state: stopped
+      when: inventory_hostname == 'db2'
+
+    - name: Remove existing data directory on slave
+      file:
+        path: "{{ postgres_data_dir }}"
+        state: absent
+      when: inventory_hostname == 'db2'
+
+    - name: Create base backup on slave from master
+      shell: |
+        {{ postgres_bin_dir }}/pg_basebackup -h {{ db_servers[0].ip }} -D {{ postgres_data_dir }} -U {{ replication_user }} -v -P --wal-method=stream
+      environment:
+        PGPASSWORD: "{{ replication_password }}"
+      become: yes
+      become_user: postgres
+      when: inventory_hostname == 'db2'
+
+    - name: Create standby.signal file (Slave only)
+      file:
+        path: "{{ postgres_config_dir }}/standby.signal"
+        state: touch
+        owner: postgres
+        group: postgres
+        mode: '0600'
+      when: inventory_hostname == 'db2'
+
+    - name: Configure slave replication settings
+      lineinfile:
+        path: "{{ postgres_config_dir }}/postgresql.auto.conf"
+        line: "{{ item }}"
+        create: yes
+        owner: postgres
+        group: postgres
+        mode: '0600'
+      loop:
+        - "primary_conninfo = 'host={{ db_servers[0].ip }} port={{ postgres_port }} user={{ replication_user }} password={{ replication_password }}'"
+        - "promote_trigger_file = '/tmp/postgresql.trigger.5432'"
+      when: inventory_hostname == 'db2'
+
+    - name: Start PostgreSQL service on slave
+      systemd:
+        name: "{{ postgres_service }}"
+        state: started
+        enabled: yes
+      when: inventory_hostname == 'db2'
+
+    - name: Wait for PostgreSQL to be ready (Slave)
+      wait_for:
+        port: "{{ postgres_port }}"
+        host: "{{ ansible_host }}"
+        timeout: 60
+      when: inventory_hostname == 'db2'
+
+    - name: Create pgpool PID directory
+      file:
+        path: /var/run/pgpool-II
+        state: directory
+        owner: postgres
+        group: postgres
+        mode: '0755'
+
+    - name: Create pool_hba.conf file
+      copy:
+        content: |
+          # pgpool-II Host-Based Authentication Configuration
+          # TYPE  DATABASE    USER        CIDR-ADDRESS          METHOD
+          
+          # Allow local connections
+          local   all         all                               trust
+          
+          # Allow connections from database servers
+          host    all         all         192.168.122.0/24      md5
+          
+          # Allow connections from application servers  
+          host    all         all         192.168.122.0/24      md5
+          
+          # Allow connections from localhost
+          host    all         all         127.0.0.1/32          trust
+          host    all         all         ::1/128               trust
+        dest: "{{ pgpool_config_dir }}/pool_hba.conf"
+        owner: postgres
+        group: postgres
+        mode: '0600'
+
+    - name: Create pool_passwd file
+      shell: |
+        echo "{{ postgres_user }}:$(echo -n '{{ postgres_password }}{{ postgres_user }}' | md5sum | cut -d' ' -f1)" > {{ pgpool_config_dir }}/pool_passwd
+        echo "{{ app_db_user }}:$(echo -n '{{ app_db_password }}{{ app_db_user }}' | md5sum | cut -d' ' -f1)" >> {{ pgpool_config_dir }}/pool_passwd
+        echo "{{ replication_user }}:$(echo -n '{{ replication_password }}{{ replication_user }}' | md5sum | cut -d' ' -f1)" >> {{ pgpool_config_dir }}/pool_passwd
+        chown postgres:postgres {{ pgpool_config_dir }}/pool_passwd
+        chmod 600 {{ pgpool_config_dir }}/pool_passwd
+
+    - name: Install and configure pgpool-II
+      copy:
+        content: |
+          # pgpool-II Configuration for {{ inventory_hostname }}
+          listen_addresses = '*'
+          port = {{ pgpool_port }}
+          socket_dir = '/tmp'
+          pcp_listen_addresses = '*'
+          pcp_port = 9898
+          
+          # PID file location
+          pid_file_name = '/var/run/pgpool-II/pgpool.pid'
+          
+          # Backend connections
+          backend_hostname0 = '{{ db_servers[0].ip }}'
+          backend_port0 = {{ postgres_port }}
+          backend_weight0 = 1
+          backend_data_directory0 = '{{ postgres_data_dir }}'
+          backend_flag0 = 'ALLOW_TO_FAILOVER'
+          backend_application_name0 = '{{ db_servers[0].name }}'
+          
+          backend_hostname1 = '{{ db_servers[1].ip }}'
+          backend_port1 = {{ postgres_port }}
+          backend_weight1 = 1
+          backend_data_directory1 = '{{ postgres_data_dir }}'
+          backend_flag1 = 'ALLOW_TO_FAILOVER'
+          backend_application_name1 = '{{ db_servers[1].name }}'
+          
+          # Authentication
+          enable_pool_hba = on
+          pool_passwd = 'pool_passwd'
+          
+          # Connection pooling
+          num_init_children = 32
+          max_pool = 4
+          child_life_time = 300
+          child_max_connections = 0
+          connection_life_time = 0
+          client_idle_limit = 0
+          
+          # Load balancing
+          load_balance_mode = on
+          ignore_leading_white_space = on
+          
+          # Master/Slave mode
+          master_slave_mode = on
+          master_slave_sub_mode = 'stream'
+          sr_check_period = 10
+          sr_check_user = '{{ replication_user }}'
+          sr_check_password = '{{ replication_password }}'
+          sr_check_database = '{{ postgres_db }}'
+          
+          # Health check
+          health_check_period = 30
+          health_check_timeout = 20
+          health_check_user = '{{ postgres_user }}'
+          health_check_password = '{{ postgres_password }}'
+          health_check_database = '{{ postgres_db }}'
+          
+          # Logging
+          log_destination = 'stderr'
+          log_line_prefix = '%t: pid %p: '
+          log_connections = on
+          log_hostname = on
+          log_statement = on
+        dest: "{{ pgpool_config_dir }}/pgpool.conf"
+        owner: postgres
+        group: postgres
+        mode: '0600'
+        backup: yes
+
+    - name: Start and enable pgpool service
+      systemd:
+        name: "{{ pgpool_service }}"
+        state: started
+        enabled: yes
+
+    - name: Create database setup completion marker
+      copy:
+        content: |
+          PostgreSQL Database Setup Completed (STANDALONE)
+          Date: {{ ansible_date_time.iso8601 }}
+          Host: {{ inventory_hostname }} ({{ ansible_host }})
+          Role: {{ role }}
+          DB Role: {{ 'MASTER (Read+Write)' if inventory_hostname == 'db1' else 'SLAVE (Read-only)' }}
+          PostgreSQL Port: {{ postgres_port }}
+          pgpool Port: {{ pgpool_port }}
+          Installation: Standalone PostgreSQL {{ postgres_version }}
+          Service: {{ postgres_service }}
+          Data Directory: {{ postgres_data_dir }}
+          App Database: {{ app_db_name }}
+          App User: {{ app_db_user }}
+          Status: Setup Complete - Verification will be performed in integration testing
+        dest: /opt/database-setup-complete.txt
+        mode: '0644'
+
+  handlers:
+    - name: restart postgresql
+      systemd:
+        name: "{{ postgres_service }}"
+        state: restarted
+
+    - name: restart pgpool
+      systemd:
+        name: "{{ pgpool_service }}"
+        state: restarted
+
+  post_tasks:
+    - name: Display Database setup summary
+      debug:
+        msg: |
+          ===== POSTGRESQL DATABASE SETUP SUMMARY (STANDALONE) =====
+          Host: {{ inventory_hostname }}
+          DB Role: {{ 'MASTER (Read+Write)' if inventory_hostname == 'db1' else 'SLAVE (Read-only)' }}
+          Service: {{ postgres_service }}
+          PostgreSQL URL: postgresql://{{ app_db_user }}:***@{{ ansible_host }}:{{ postgres_port }}/{{ app_db_name }}
+          pgpool URL: postgresql://{{ app_db_user }}:***@{{ ansible_host }}:{{ pgpool_port }}/{{ app_db_name }}
+          Version: PostgreSQL {{ postgres_version }}
+          Installation: Standalone (Native)
+          Data Directory: {{ postgres_data_dir }}
+          Status: Setup Complete - Integration testing will verify functionality
+          =======================================================
+
+    - name: Display final setup summary
+      debug:
+        msg: |
+          ===== COMPLETE INFRASTRUCTURE READY =====
+          🔸 Load Balancers: lb1, lb2 (VIP: 192.168.122.100)
+          🔸 Application Servers: app1, app2 (Port: 8080)
+          🔸 Redis Cluster: redis1, redis2 (Port: 6379)
+          🔸 PostgreSQL Master-Slave: db1 (master), db2 (slave) - STANDALONE
+          
+          ✅ Access Points:
+          • Web App: https://192.168.122.100 (via load balancer)
+          • Database: postgresql://{{ app_db_user }}:{{ app_db_password }}@192.168.122.131:{{ pgpool_port }}/{{ app_db_name }}
+          • Redis: redis://:***@192.168.122.121:6379
+          
+          🎯 High Availability Features:
+          • Load balancer failover (KeepAlived VIP)
+          • Application server redundancy (2 servers)
+          • Redis sentinel monitoring and failover
+          • PostgreSQL streaming replication (master-slave) - STANDALONE
+          • Read operations continue if master DB fails
+          
+          🚀 SIMPLE Production Environment Setup Complete!
+          📋 Run integration testing: 05-integration-testing.yml
+          =====================================
+      when: inventory_hostname == 'db1'
