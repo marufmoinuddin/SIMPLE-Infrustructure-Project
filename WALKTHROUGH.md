@@ -48,17 +48,18 @@ sudo apt install -y git curl wget htop
 ```
 
 ### VM Toolkit Setup
-1. **Download the VM Toolkit**:
+1. **Locate the VM Toolkit**:
    ```bash
-   # The VM toolkit should be located at: /mnt/Storage/VMs/prod/vm_toolkit.sh
-   ls -la /mnt/Storage/VMs/prod/vm_toolkit.sh
+   # The VM toolkit is included in the repository
+   ls -la scripts/vm_toolkit.sh
+   chmod +x scripts/vm_toolkit.sh
    ```
 
 2. **Prepare Base Image**:
    ```bash
-   cd /mnt/Storage/VMs/prod
-   # Ensure base.qcow2 exists (Ubuntu 22.04 base image)
-   ls -la base.qcow2
+   # Ensure you have a base.qcow2 image (Ubuntu 22.04)
+   # Place it in your VM directory (e.g., /mnt/Storage/VMs/prod/base.qcow2)
+   ls -la /mnt/Storage/VMs/prod/base.qcow2
    ```
 
 ---
@@ -68,9 +69,13 @@ sudo apt install -y git curl wget htop
 ### Step 1: Create VMs Using VM Toolkit
 
 ```bash
+# Navigate to your VM storage directory
 cd /mnt/Storage/VMs/prod
 
-# Make the toolkit executable
+# Copy the toolkit from the repository
+cp ~/git/SIMPLE-Infrastructure-Project/scripts/vm_toolkit.sh .
+
+# Make it executable
 chmod +x vm_toolkit.sh
 
 # Create all VMs (this will take several minutes)
