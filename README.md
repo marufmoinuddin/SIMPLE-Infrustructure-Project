@@ -62,7 +62,7 @@ SIMPLE-Infrastructure-Project/
 ### Installation
 1. **Clone the repository**:
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/marufmoinuddin/SIMPLE-Infrustructure-Project.git
    cd SIMPLE-Infrastructure-Project
    ```
 
@@ -81,6 +81,22 @@ SIMPLE-Infrastructure-Project/
    cd ansible_scripts
    ansible-playbook -i inventory.ini 00-master-deployment.yml
    ```
+
+## 🔧 VM Infrastructure Location
+The virtual machine files are located at: `/mnt/Storage/VMs/prod/`
+- **VM Disks**: `vm_disks/` - Contains QCOW2 disk images for all VMs
+- **Cloud-init ISOs**: `cloud_init_ISOs/` - Cloud-init configuration ISOs
+- **Base Image**: `base.qcow2` - Ubuntu 22.04 base image
+
+## 🎯 Infrastructure Status
+- **Network**: 192.168.122.0/24 (Internal network)
+- **Virtual IP**: 192.168.122.100 (HAProxy VIP)
+- **Components**:
+  - Load Balancers: lb1, lb2 (HAProxy with Keepalived)
+  - Application Servers: app1, app2 (Flask + Docker)
+  - Redis Cluster: redis1, redis2 (Master-Slave)
+  - Database: db1, db2 (PostgreSQL with pgpool-II)
+- **Status**: Production Ready (100% Operational)
 
 ## 🔧 VM Infrastructure Setup
 
@@ -106,16 +122,6 @@ cd /mnt/Storage/VMs/prod
 ```
 
 See `WALKTHROUGH.md` for complete VM setup and infrastructure deployment instructions.
-
-## 🎯 Infrastructure Status
-- **Network**: 192.168.122.0/24 (Internal network)
-- **Virtual IP**: 192.168.122.100 (HAProxy VIP)
-- **Components**:
-  - Load Balancers: lb1, lb2 (HAProxy with Keepalived)
-  - Application Servers: app1, app2 (Flask + Docker)
-  - Redis Cluster: redis1, redis2 (Master-Slave)
-  - Database: db1, db2 (PostgreSQL with pgpool-II)
-- **Status**: Production Ready (100% Operational)
 
 ## 📊 Architecture Diagram
 ```
