@@ -1,9 +1,5 @@
 # SIMPLE Infrastructure Project
 
-## 🏗️ Proj└── scripts/                          # Utility and demo scripts
-    ├── vm_toolkit.sh               # VM management toolkit for infrastructure
-    ├── quick-verify.sh             # Infrastructure health check
-    └── demo-commands.sh            # Presentation demo commands Overview
 The SIMPLE Infrastructure Project is a comprehensive demonstration of deploying a high-availability, multi-tier web application stack using modern DevOps practices. This project showcases enterprise-grade infrastructure components including load balancing, application servers, caching, and database clustering, all automated through Ansible playbooks and containerized with Docker.
 
 The project includes a Flask-based web application that serves as the frontend, backed by Redis for caching and PostgreSQL for data persistence, all orchestrated in a highly available setup with redundant components.
@@ -15,40 +11,6 @@ The project includes a Flask-based web application that serves as the frontend, 
 - **Monitoring Ready**: Infrastructure designed for easy integration with monitoring tools
 - **Scalable Architecture**: Horizontal scaling capabilities for application and database layers
 - **Production Ready**: Enterprise-grade setup with proper networking, security, and redundancy
-
-## 📁 Directory Structure
-
-```
-SIMPLE-Infrastructure-Project/
-├── README.md                          # Project documentation
-├── documentation/                     # Detailed guides and presentations
-│   ├── infrastructure-guidebook.md    # Complete setup and configuration guide
-│   └── presentation-flow.md          # Presentation structure and demo flow
-├── application/                       # Web application source code
-│   ├── enhanced_backend.py           # Flask application with enhanced features
-│   ├── enhanced_app.html             # Main HTML template
-│   ├── requirements.txt              # Python dependencies
-│   ├── static/                       # Static assets (CSS, JS)
-│   │   ├── css/
-│   │   │   └── style.css
-│   │   └── js/
-│   │       └── app.js
-│   └── templates/                    # Jinja2 templates
-│       └── enhanced_app.html
-├── ansible_scripts/               # Ansible playbooks and inventory
-│   ├── 00-master-deployment.yml  # Master deployment playbook
-│   ├── 00-prerequisites-setup.yml # System prerequisites
-│   ├── 01-loadbalancer-setup.yml # HAProxy load balancer configuration
-│   ├── 02-app-setup-enhanced.yml # Enhanced application deployment
-│   ├── 02-app-setup.yml          # Basic application deployment
-│   ├── 03-redis-setup.yml        # Redis cluster setup
-│   ├── 04-database-setup.yml     # PostgreSQL with pgpool-II
-│   ├── 05-integration-testing.yml # Integration tests
-│   └── inventory.ini             # Ansible inventory
-└── scripts/                          # Utility and demo scripts
-    ├── quick-verify.sh               # Infrastructure health check
-    └── demo-commands.sh              # Presentation demo commands
-```
 
 ## 🚀 Quick Start
 
