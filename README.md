@@ -1,6 +1,9 @@
 # SIMPLE Infrastructure Project
 
-## 🏗️ Project Overview
+## 🏗️ Proj└── scripts/                          # Utility and demo scripts
+    ├── vm_toolkit.sh               # VM management toolkit for infrastructure
+    ├── quick-verify.sh             # Infrastructure health check
+    └── demo-commands.sh            # Presentation demo commands Overview
 The SIMPLE Infrastructure Project is a comprehensive demonstration of deploying a high-availability, multi-tier web application stack using modern DevOps practices. This project showcases enterprise-grade infrastructure components including load balancing, application servers, caching, and database clustering, all automated through Ansible playbooks and containerized with Docker.
 
 The project includes a Flask-based web application that serves as the frontend, backed by Redis for caching and PostgreSQL for data persistence, all orchestrated in a highly available setup with redundant components.
@@ -79,11 +82,30 @@ SIMPLE-Infrastructure-Project/
    ansible-playbook -i inventory.ini 00-master-deployment.yml
    ```
 
-## 🔧 VM Infrastructure Location
-The virtual machine files are located at: `/mnt/Storage/VMs/prod/`
-- **VM Disks**: `vm_disks/` - Contains QCOW2 disk images for all VMs
-- **Cloud-init ISOs**: `cloud_init_ISOs/` - Cloud-init configuration ISOs
-- **Base Image**: `base.qcow2` - Ubuntu 22.04 base image
+## 🔧 VM Infrastructure Setup
+
+The project includes a comprehensive VM management toolkit (`scripts/vm_toolkit.sh`) that automates the creation and configuration of the required virtual machines:
+
+### VM Specifications
+- **Load Balancers**: lb1 (192.168.122.101), lb2 (192.168.122.102)
+- **Application Servers**: app1 (192.168.122.111), app2 (192.168.122.112)
+- **Redis Cluster**: redis1 (192.168.122.121), redis2 (192.168.122.122)
+- **Database Servers**: db1 (192.168.122.131), db2 (192.168.122.132)
+
+### Quick VM Setup
+```bash
+# Copy toolkit to VM directory
+cp scripts/vm_toolkit.sh /mnt/Storage/VMs/prod/
+cd /mnt/Storage/VMs/prod
+
+# Create all VMs
+./vm_toolkit.sh create
+
+# Check VM status
+./vm_toolkit.sh list
+```
+
+See `WALKTHROUGH.md` for complete VM setup and infrastructure deployment instructions.
 
 ## 🎯 Infrastructure Status
 - **Network**: 192.168.122.0/24 (Internal network)
